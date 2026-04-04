@@ -8,9 +8,9 @@
 #define LEFT_MASK 0xE0
 
 //Movement Masks
-//Right: (Port B): IN1(0x10) is FWD, IN2(0x20) is REV
-#define RIGHT_FWD 0x10
-#define RIGHT_REV 0x20
+//Right: (Port B): IN1(0x20) is FWD, IN2(0x10) is REV
+#define RIGHT_FWD 0x20
+#define RIGHT_REV 0x10
 //0x30
 #define RIGHT_DIR_CLEAR (RIGHT_FWD | RIGHT_REV)
 
@@ -21,8 +21,15 @@
 #define LEFT_DIR_CLEAR (LEFT_FWD | LEFT_REV)
 
 // --- 2. Global Variables ---
-const int SLOW_SPEED = 150;
-const int MED_SPEED = 200;
+// Pattern: 1 = Boomerang, 2 = Square, 3 = Ultrasonic Obstacle Avoidance
+int patternID = 1;
+// Scale: 1.0 = Small (Base times), 2.0 = Medium (Double times), etc.
+float spaceScale = 1.0;
+// Tracks how many sides of the square have been completed (For pattern 2)
+int sideCount = 0;
+
+const int SLOW_SPEED = 120;
+const int MED_SPEED = 180;
 const int FAST_SPEED = 255;
 
 unsigned long previousT = 0;
@@ -40,52 +47,132 @@ void setup() {
 
     //Record the starting time
     previousT = millis();
+
+    Serial.begin(9600);
+    Serial.println("UAV Project 5 - Part A Initialized.");
 }
 
 // --- 4. Main Program Loop ---
 void loop() {
     unsigned long currentT = millis();
 
-    switch (moveStep) {
-        case 0: //Forward cruise at MED_SPEED for 2 seconds
-            moveForward(MED_SPEED);
-            if (currentT - previousT >= 2000) {
-                previousT = currentT;
-                moveStep++;
-            }
-            break;
+    switch (patternID) {
+        case 1: // --- DOUBLE BOOMERANG (Zero Displacement) ---
+            switch (moveStep) {
+                case 0: //Forward straight (800ms)
+                    moveForward(MED_SPEED);
+                    if (currentT - previousT >= (unsigned long)(800 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("State 1: Arc Left Forward");
+                    }
+                    break;
 
-            case 1: //Arc left 1.5 seconds
-            turnLeft(SLOW_SPEED, MED_SPEED);
-            if (currentT - previousT >= 1500) {
-                previousT = currentT;
-                moveStep++;
-            }
-            break;
+                case 1: //Arc left forward (1000ms)
+                    turnLeft(SLOW_SPEED, FAST_SPEED);
+                    if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("State 2: Arc Left Reverse");
+                    }
+                    break;
 
-            case 2: //Reverse at SLOW_SPEED for 2 seconds
-            moveBackward(SLOW_SPEED);
-            if (currentT - previousT >= 2000) {
-                previousT = currentT;
-                moveStep++;
-            }
-            break;
+                case 2: //Arc left reverse (1000ms)
+                    turnLeftReverse(SLOW_SPEED, FAST_SPEED);
+                    if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("State 3: Arc Right Forward");
+                    }
+                    break;
 
-            case 3: //Arc right in reverse for 1.5 seconds
-            turnRightReverse(SLOW_SPEED, MED_SPEED);
-            if (currentT - previousT >= 1500) {
-                previousT = currentT;
-                moveStep++;
-            }
-            break;
+                case 3: //Arc right forward (1000ms)
+                    turnRight(SLOW_SPEED, FAST_SPEED);
+                    if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("State 4: Arc Right Reverse");
+                    }
+                    break;
 
-            case 4: //Stop, restart after 3 seconds
+                case 4: //Arc right reverse (1000ms)
+                    turnRightReverse(SLOW_SPEED, FAST_SPEED);
+                    if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("State 5: Backward Straight");
+                    }
+                    break;
+
+                case 5: //Backward straight (800ms)
+                    moveBackward(MED_SPEED);
+                    if (currentT - previousT >= (unsigned long)(800 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("State 6: Stop");
+                    }
+                    break;
+
+                case 6: //Stop, restart after 3 seconds
+                    stopMotors();
+                    if (currentT - previousT >= 3000) {
+                        previousT = currentT;
+                        moveStep = 0; //Restart sequence
+                        Serial.println("State 0: Move forward");
+                    }
+                    break;
+            }
+            break; //End Pattern 1
+
+        case 2: // --- SQUARE PATTERN ---
+            switch (moveStep) {
+                case 0: //Forward leg
+                    moveForward(MED_SPEED);
+                    if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
+                        previousT = currentT;
+                        moveStep++;
+                        Serial.println("Square Step 1: Pivot Left 90");
+                    }
+                    break;
+                
+                case 1: //Pivot left 90 degrees
+                    pivotLeft(MED_SPEED);
+                    if (currentT - previousT >= 500) {
+                        previousT = currentT;
+                        sideCount++;
+                        moveStep++;
+                        Serial.println("Square Step 2: Forward Leg");
+                    }
+                    break;
+                
+                case 2: //Check if square is complete, if not, repeat.
+                    if (sideCount < 4) {
+                        moveStep = 0; //Back to case 0
+                        Serial.print("Starting side: ");
+                        Serial.println(sideCount + 1); 
+                    }
+                    else {
+                        sideCount = 0; //Reset
+                        moveStep++; //Go to case 3 (Stop)
+                        Serial.println("Square Complete.");
+                    }
+                    break;
+                
+                case 3: //Stop, restart after 3 seconds
+                    stopMotors();
+                    if (currentT - previousT >= 3000) {
+                        previousT = currentT;
+                        moveStep = 0; //Restart sequence
+                        Serial.println("Starting Square Pattern.");
+                    }
+                    break;
+            }
+            break; //End Pattern 2
+
+        case 3: // --- ULTRASONIC TEST ---
+            // Placeholder for now
             stopMotors();
-            if (currentT - previousT >= 3000) {
-                previousT = currentT;
-                moveStep = 0; //Restart sequence
-            }
-            break;    
+            break;
     }
 }
 
@@ -96,7 +183,7 @@ void moveForward(int speed) {
     PORTB &= ~RIGHT_DIR_CLEAR;
     //Wipe PD6, PD7
     PORTD &= ~LEFT_DIR_CLEAR;
-    //Set PB4 HIGH
+    //Set PB5 HIGH
     PORTB |= RIGHT_FWD;
     //Set PD6 HIGH
     PORTD |= LEFT_FWD;
@@ -111,7 +198,7 @@ void moveBackward(int speed) {
     PORTB &= ~RIGHT_DIR_CLEAR;
     //Wipe PD6, PD7
     PORTD &= ~LEFT_DIR_CLEAR;
-    //Set PB5 HIGH
+    //Set PB4 HIGH
     PORTB |= RIGHT_REV;
     //Set PD7 HIGH
     PORTD |= LEFT_REV;
@@ -175,6 +262,34 @@ void turnLeftReverse(int leftSpeed, int rightSpeed) {
     analogWrite(11, rightSpeed);
     //ENB (Inner wheel)
     analogWrite(5, leftSpeed);
+}
+
+void pivotLeft(int speed) {
+    //Left side reverse, right side forward
+    PORTB &= ~RIGHT_DIR_CLEAR;
+    PORTD &= ~LEFT_DIR_CLEAR;
+    PORTB |= RIGHT_FWD;
+    PORTD |= LEFT_REV;
+
+    //Apply same speed, opposite directions for pivot
+    //ENA (Right wheel)
+    analogWrite(11, speed);
+    //ENB (Left wheel)
+    analogWrite(5, speed);
+}
+
+void pivotRight(int speed) {
+    //Right side reverse, left side forward
+    PORTB &= ~RIGHT_DIR_CLEAR;
+    PORTD &= ~LEFT_DIR_CLEAR;
+    PORTB |= RIGHT_REV;
+    PORTD |= LEFT_FWD;
+
+    //Apply same speed, opposite directions for pivot
+    //ENA (Right wheel)
+    analogWrite(11, speed);
+    //ENB (Left wheel)
+    analogWrite(5, speed);
 }
 
 void stopMotors() {
