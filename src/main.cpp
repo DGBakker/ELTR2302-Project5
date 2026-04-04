@@ -1,3 +1,4 @@
+#pragma region ConfigurationAndMasks
 // --- 1. Configuration & Masks ---
 #include <Arduino.h>
 
@@ -19,7 +20,9 @@
 #define LEFT_REV 0x80
 //0xC0
 #define LEFT_DIR_CLEAR (LEFT_FWD | LEFT_REV)
+#pragma endregion
 
+#pragma region GlobalVariables
 // --- 2. Global Variables ---
 // Pattern: 1 = Boomerang, 2 = Square, 3 = Ultrasonic Obstacle Avoidance
 int patternID = 1;
@@ -34,7 +37,9 @@ const int FAST_SPEED = 255;
 
 unsigned long previousT = 0;
 int moveStep = 0;
+#pragma endregion
 
+#pragma region Initialization
 // --- 3. Initialization (setup) ---
 void setup() {
     //Set motor bits to 1 (Output) on DDRB and DDRD
@@ -51,12 +56,15 @@ void setup() {
     Serial.begin(9600);
     Serial.println("UAV Project 5 - Part A Initialized.");
 }
+#pragma endregion
 
 // --- 4. Main Program Loop ---
 void loop() {
     unsigned long currentT = millis();
 
     switch (patternID) {
+
+        #pragma region DoubleBoomerang (Pattern 1)
         case 1: // --- DOUBLE BOOMERANG (Zero Displacement) ---
             switch (moveStep) {
                 case 0: //Forward straight (800ms)
@@ -123,7 +131,9 @@ void loop() {
                     break;
             }
             break; //End Pattern 1
+            #pragma endregion
 
+        #pragma region SquarePattern (Pattern 2)
         case 2: // --- SQUARE PATTERN ---
             switch (moveStep) {
                 case 0: //Forward leg
@@ -168,14 +178,17 @@ void loop() {
                     break;
             }
             break; //End Pattern 2
+        #pragma endregion
 
+        #pragma region UltrasonicTest (Pattern 3)
         case 3: // --- ULTRASONIC TEST ---
-            // Placeholder for now
             stopMotors();
             break;
+        #pragma endregion
     }
 }
 
+#pragma region MovementFunctions
 // --- 5. Movement Functions ---
 
 void moveForward(int speed) {
@@ -301,3 +314,4 @@ void stopMotors() {
     analogWrite(11, 0);
     analogWrite(5, 0);
 }
+#pragma endregion
