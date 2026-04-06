@@ -2,23 +2,39 @@
 // --- 1. Configuration & Masks ---
 #include <Arduino.h>
 
-//Master Masks (For setup only)
-//PB3, PB4, PB5
+// --- Function Prototypes ---
+void moveForward(int speed);
+void moveBackward(int speed);
+void turnLeft(int leftSpeed, int rightSpeed);
+void turnRight(int leftSpeed, int rightSpeed);
+void turnLeftReverse(int leftSpeed, int rightSpeed);
+void turnRightReverse(int leftSpeed, int rightSpeed);
+void pivotLeft(int speed);
+void pivotRight(int speed);
+void stopMotors();
+void mathandoutput();
+
+// Master Masks (For setup only)
+// PB3, PB4, PB5
 #define RIGHT_MASK 0x38
-//PD5, PD6, PD7
+// PD5, PD6, PD7
 #define LEFT_MASK 0xE0
 
-//Movement Masks
-//Right: (Port B): IN1(0x20) is FWD, IN2(0x10) is REV
+// HC-SR04 Pins
+#define TRIG_PIN 9 // PB1 (OC1A)
+#define ECHO_PIN 2 // PD2 (INT0)
+
+// Movement Masks
+// Right: (Port B): IN1(0x20) is FWD, IN2(0x10) is REV
 #define RIGHT_FWD 0x20
 #define RIGHT_REV 0x10
-//0x30
+// 0x30
 #define RIGHT_DIR_CLEAR (RIGHT_FWD | RIGHT_REV)
 
-//Left: (Port D): IN4(0x40) is FWD, IN3(0x80) is REV
+// Left: (Port D): IN4(0x40) is FWD, IN3(0x80) is REV
 #define LEFT_FWD 0x40
 #define LEFT_REV 0x80
-//0xC0
+// 0xC0
 #define LEFT_DIR_CLEAR (LEFT_FWD | LEFT_REV)
 #pragma endregion
 
@@ -31,36 +47,69 @@ float spaceScale = 1.0;
 // Tracks how many sides of the square have been completed (For pattern 2)
 int sideCount = 0;
 
+// HC-SR04 Variables (from instructor worksheet)
+volatile float distance = 0;
+volatile unsigned long int riseTime = 0;
+volatile unsigned long int fallTime = 0;
+volatile boolean calculation = false;
+
 const int SLOW_SPEED = 120;
 const int MED_SPEED = 180;
 const int FAST_SPEED = 255;
 
 unsigned long previousT = 0;
+unsigned long lastRedraw = 0;
 int moveStep = 0;
+String currentStatus = "Initializing...";
 #pragma endregion
 
 #pragma region Initialization
 // --- 3. Initialization (setup) ---
 void setup() {
-    //Set motor bits to 1 (Output) on DDRB and DDRD
+    // Set motor bits to 1 (Output) on DDRB and DDRD
     DDRB |= RIGHT_MASK;
     DDRD |= LEFT_MASK;
 
-    //Set default state to LOW (Stopped)
+    // Set TRIG (D9/PB1) as Output
+    DDRB |= (1 << PB1);
+    // Set ECHO (D2/PD2) as Input
+    DDRD &= ~(1 << PD2);
+
+    // Set default state to LOW (Stopped)
     PORTB &= ~RIGHT_MASK;
     PORTD &= ~LEFT_MASK;
 
-    //Record the starting time
+    // Timer 1 Setup for HC-SR04 Trigger (Fast PWM Mode 14)
+    // Period = 100ms (10Hz), Pulse Width = 10us
+    TCCR1A = 0x82; // Clear OC1A on Compare Match, set OC1A at BOTTOM
+    TCCR1B = 0x1B; // Fast PWM mode 14, Prescaler = 64
+    ICR1 = 24999;  // Period = (16MHz / (64 * 10Hz)) - 1 = 24999
+    OCR1A = 3;     // Pulse Width = ~12us (Close enough to the 10us min)
+
+    // External Interrupt Setup for Echo (INT0 on D2)
+    cli();           // Disable interrupts
+    EICRA = 0x01;    // Trigger on ANY logical change (Rising or Falling)
+    EIMSK |= (1 << INT0); // Enable INT0
+    sei();           // Enable interrupts
+
+    // Record the starting time
     previousT = millis();
 
     Serial.begin(9600);
-    Serial.println("UAV Project 5 - Part A Initialized.");
+    // Clear the screen once on startup and HIDE the cursor
+    Serial.print("\033[2J\033[?25l"); 
+    currentStatus = "UAV Project 5 - Part A Initialized.";
 }
 #pragma endregion
 
 // --- 4. Main Program Loop ---
 void loop() {
     unsigned long currentT = millis();
+
+    // If new echo data is ready, process it
+    if (calculation) {
+        mathandoutput();
+    }
 
     switch (patternID) {
 
@@ -72,7 +121,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(800 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("State 1: Arc Left Forward");
+                        currentStatus = "State 1: Arc Left Forward";
                     }
                     break;
 
@@ -81,7 +130,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("State 2: Arc Left Reverse");
+                        currentStatus = "State 2: Arc Left Reverse";
                     }
                     break;
 
@@ -90,7 +139,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("State 3: Arc Right Forward");
+                        currentStatus = "State 3: Arc Right Forward";
                     }
                     break;
 
@@ -99,7 +148,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("State 4: Arc Right Reverse");
+                        currentStatus = "State 4: Arc Right Reverse";
                     }
                     break;
 
@@ -108,7 +157,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("State 5: Backward Straight");
+                        currentStatus = "State 5: Backward Straight";
                     }
                     break;
 
@@ -117,7 +166,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(800 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("State 6: Stop");
+                        currentStatus = "State 6: Stop";
                     }
                     break;
 
@@ -126,7 +175,7 @@ void loop() {
                     if (currentT - previousT >= 3000) {
                         previousT = currentT;
                         moveStep = 0; //Restart sequence
-                        Serial.println("State 0: Move forward");
+                        currentStatus = "State 0: Move forward";
                     }
                     break;
             }
@@ -141,7 +190,7 @@ void loop() {
                     if (currentT - previousT >= (unsigned long)(1000 * spaceScale)) {
                         previousT = currentT;
                         moveStep++;
-                        Serial.println("Square Step 1: Pivot Left 90");
+                        currentStatus = "Square Step 1: Pivot Left 90";
                     }
                     break;
                 
@@ -151,20 +200,19 @@ void loop() {
                         previousT = currentT;
                         sideCount++;
                         moveStep++;
-                        Serial.println("Square Step 2: Forward Leg");
+                        currentStatus = "Square Step 2: Forward Leg";
                     }
                     break;
                 
                 case 2: //Check if square is complete, if not, repeat.
                     if (sideCount < 4) {
                         moveStep = 0; //Back to case 0
-                        Serial.print("Starting side: ");
-                        Serial.println(sideCount + 1); 
+                        currentStatus = "Starting side: " + String(sideCount + 1); 
                     }
                     else {
                         sideCount = 0; //Reset
                         moveStep++; //Go to case 3 (Stop)
-                        Serial.println("Square Complete.");
+                        currentStatus = "Square Complete.";
                     }
                     break;
                 
@@ -173,7 +221,7 @@ void loop() {
                     if (currentT - previousT >= 3000) {
                         previousT = currentT;
                         moveStep = 0; //Restart sequence
-                        Serial.println("Starting Square Pattern.");
+                        currentStatus = "Starting Square Pattern.";
                     }
                     break;
             }
@@ -313,5 +361,62 @@ void stopMotors() {
     //Set PWM to 0
     analogWrite(11, 0);
     analogWrite(5, 0);
+}
+#pragma endregion
+
+#pragma region UltrasonicFunctions
+// --- 6. Ultrasonic Sensor Functions ---
+
+void mathandoutput(void) {
+    // Distance = (Time * Speed of Sound) / 2
+    distance = (float)(fallTime - riseTime) / 58.0;
+
+    // Filter out bad data (HC-SR04 max range is ~400cm)
+    // When objects are too close (<2cm), it often reads as a massive timeout value
+    if (distance > 400.0) {
+        distance = 400.0; // Clamp it to max range instead of displaying 800+
+    }
+
+    // Only update the screen at 5Hz to keep it smooth
+    if (millis() - lastRedraw >= 200) {
+        lastRedraw = millis();
+        
+        // ANSI escape codes:
+        // \033[H  -> Move cursor to home (top left)
+        // \033[K  -> Clear line from cursor to end
+        
+        Serial.print("\033[H"); 
+        Serial.println("--- UAV SENSOR DASHBOARD ---");
+        
+        Serial.print("\033[KSTATUS: ");
+        Serial.println(currentStatus);
+        
+        Serial.println("\033[K----------------------------");
+        
+        Serial.print("\033[KTIME: ");
+        Serial.print(fallTime - riseTime);
+        Serial.print(" us | DISTANCE: ");
+        Serial.print(distance);
+        Serial.println(" cm");
+    }
+
+    calculation = false; // Reset the flag
+}
+
+// ========== Interrupt Service Routine ==========
+ISR(INT0_vect) {
+    
+    
+    // Check if the pin just went HIGH (Rising Edge)
+    if (PIND & (1 << PD2)) {
+        riseTime = micros(); // After triggered, get the riseTime
+    } 
+    // Otherwise, the pin just went LOW (Falling Edge)
+    else {
+        fallTime = micros(); // Get the fallTime on the echo of signal
+        calculation = true;  // Set calculation flag to TRUE
+    }
+    
+    
 }
 #pragma endregion
