@@ -285,25 +285,26 @@ void loop() {
                     if (currentT - previousT >= 400) { 
                         stopMotors();
                         previousT = currentT;
+                        distance = 0; // Reset distance to 0 so we MUST get a fresh reading
                         moveStep = 5;
                         currentStatus = "Checking clearance...";
                     }
                     break;
 
                 case 5: // Requirement E: Check clearance
-                    // Wait 1 full second after stopping to ensure momentum has settled 
-                    // and we have multiple fresh 10Hz pings in the new direction.
-                    if (currentT - previousT >= 1000) {
+                    // Wait 1.5 seconds to be absolutely sure the sensor has fresh data
+                    if (currentT - previousT >= 1500) {
                         // Rubric: repeat step D until no object is identified within 250cm.
-                        if (distance < 250) {
+                        if (distance > 0 && distance < 250) {
                             previousT = currentT;
                             moveStep = 4; // Go back to rotate left
-                            currentStatus = "Object < 250cm. Rotating again.";
+                            currentStatus = "Object detected at " + String(distance) + " cm. Rotating.";
                         } 
-                        else {
-                            // Path clear for 250cm, resume forward
+                        else if (distance >= 250 || distance == 0) {
+                            // If distance is 0 after 1.5s, it likely timed out (no object found)
+                            // which counts as clear for the HC-SR04.
                             moveStep = 0; // Go back to state A
-                            currentStatus = "Clear path found. Resuming.";
+                            currentStatus = "Clear path (" + String(distance) + " cm). Resuming.";
                         }
                     }
                     break;
