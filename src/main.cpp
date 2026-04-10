@@ -291,8 +291,9 @@ void loop() {
                     break;
 
                 case 5: // Requirement E: Check clearance
-                    // Give the sensor a moment to grab a clean reading after stopping
-                    if (currentT - previousT >= 200) {
+                    // Wait 1 full second after stopping to ensure momentum has settled 
+                    // and we have multiple fresh 10Hz pings in the new direction.
+                    if (currentT - previousT >= 1000) {
                         // Rubric: repeat step D until no object is identified within 250cm.
                         if (distance < 250) {
                             previousT = currentT;
