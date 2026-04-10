@@ -232,14 +232,15 @@ void loop() {
         case 3: // --- ULTRASONIC OBSTACLE AVOIDANCE ---
             switch(moveStep) {
                 case 0: // Normal Driving & Slow Down (Requirements A & B)
-                    if (distance <= 25) {
+                    // Must be > 0 to prevent triggering immediately on boot before first ping
+                    if (distance > 0 && distance <= 25) {
                         // Requirement C: Stop triggered!
                         stopMotors();
                         previousT = currentT;
                         moveStep = 1;
                         currentStatus = "Object < 25cm! Stopping.";
                     } 
-                    else if (distance <= 100) {
+                    else if (distance > 0 && distance <= 100) {
                         // Requirement B: Object < 100cm, slow to 70% (~178 PWM)
                         moveForward(178);
                         currentStatus = "Object < 100cm. Slowing down.";
@@ -279,8 +280,8 @@ void loop() {
                     break;
 
                 case 4: // Requirement D: Rotate left 30 to 40 degrees
-                    turnLeft(150, 150); // Adjust speeds as needed for a pivot
-                    // Time needed to rotate 30-40 degrees (needs physical tuning, assuming ~400ms for now)
+                    pivotLeft(150); // Use pivotLeft so wheels spin opposite directions
+                    // Time needed to rotate 30-40 degrees (needs physical tuning)
                     if (currentT - previousT >= 400) { 
                         stopMotors();
                         previousT = currentT;
@@ -292,19 +293,17 @@ void loop() {
                 case 5: // Requirement E: Check clearance
                     // Give the sensor a moment to grab a clean reading after stopping
                     if (currentT - previousT >= 200) {
-                        if (distance < 50) {
-                            // Object still within 50cm, repeat rotation
+                        // Rubric: repeat step D until no object is identified within 250cm.
+                        if (distance < 250) {
                             previousT = currentT;
                             moveStep = 4; // Go back to rotate left
-                            currentStatus = "Blocked! Rotating again.";
+                            currentStatus = "Object < 250cm. Rotating again.";
                         } 
-                        else if (distance >= 250) {
+                        else {
                             // Path clear for 250cm, resume forward
                             moveStep = 0; // Go back to state A
                             currentStatus = "Clear path found. Resuming.";
                         }
-                        // Note: If distance is between 50 and 250, we wait here until 
-                        // the rubric condition (clear for 250cm) is met.
                     }
                     break;
             }
