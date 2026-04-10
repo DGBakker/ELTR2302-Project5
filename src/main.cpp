@@ -41,7 +41,7 @@ void mathandoutput();
 #pragma region GlobalVariables
 // --- 2. Global Variables ---
 // Pattern: 1 = Boomerang, 2 = Square, 3 = Ultrasonic Obstacle Avoidance
-int patternID = 1;
+int patternID = 3;
 // Scale: 1.0 = Small (Base times), 2.0 = Medium (Double times), etc.
 float spaceScale = 1.0;
 // Tracks how many sides of the square have been completed (For pattern 2)
