@@ -282,7 +282,7 @@ void loop() {
                 case 4: // Requirement D: Rotate left 30 to 40 degrees
                     pivotLeft(150); // Use pivotLeft so wheels spin opposite directions
                     // Time needed to rotate 30-40 degrees (needs physical tuning)
-                    if (currentT - previousT >= 400) { 
+                    if (currentT - previousT >= 350) { 
                         stopMotors();
                         previousT = currentT;
                         distance = 0; // Reset distance to 0 so we MUST get a fresh reading
