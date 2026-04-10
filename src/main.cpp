@@ -229,8 +229,85 @@ void loop() {
         #pragma endregion
 
         #pragma region UltrasonicTest (Pattern 3)
-        case 3: // --- ULTRASONIC TEST ---
-            stopMotors();
+        case 3: // --- ULTRASONIC OBSTACLE AVOIDANCE ---
+            switch(moveStep) {
+                case 0: // Normal Driving & Slow Down (Requirements A & B)
+                    if (distance <= 25) {
+                        // Requirement C: Stop triggered!
+                        stopMotors();
+                        previousT = currentT;
+                        moveStep = 1;
+                        currentStatus = "Object < 25cm! Stopping.";
+                    } 
+                    else if (distance <= 100) {
+                        // Requirement B: Object < 100cm, slow to 70% (~178 PWM)
+                        moveForward(178);
+                        currentStatus = "Object < 100cm. Slowing down.";
+                    } 
+                    else {
+                        // Requirement A: Path clear, min 85% full duty cycle (~217 PWM)
+                        moveForward(217);
+                        currentStatus = "Path clear. Forward 85%.";
+                    }
+                    break;
+
+                case 1: // Requirement C: Brief stop before reversing
+                    stopMotors();
+                    if (currentT - previousT >= 250) { // Brief 250ms pause to let momentum settle
+                        previousT = currentT;
+                        moveStep = 2;
+                        currentStatus = "Reversing...";
+                    }
+                    break;
+
+                case 2: // Requirement C: Reverse at moderate speed for 1 second
+                    moveBackward(150); // Moderate speed
+                    if (currentT - previousT >= 1000) { // 1 second
+                        previousT = currentT;
+                        moveStep = 3;
+                        currentStatus = "Stopping before rotate.";
+                    }
+                    break;
+
+                case 3: // Requirement C: Stop the vehicle again
+                    stopMotors();
+                    if (currentT - previousT >= 250) { // Brief 250ms pause
+                        previousT = currentT;
+                        moveStep = 4;
+                        currentStatus = "Rotating Left.";
+                    }
+                    break;
+
+                case 4: // Requirement D: Rotate left 30 to 40 degrees
+                    turnLeft(150, 150); // Adjust speeds as needed for a pivot
+                    // Time needed to rotate 30-40 degrees (needs physical tuning, assuming ~400ms for now)
+                    if (currentT - previousT >= 400) { 
+                        stopMotors();
+                        previousT = currentT;
+                        moveStep = 5;
+                        currentStatus = "Checking clearance...";
+                    }
+                    break;
+
+                case 5: // Requirement E: Check clearance
+                    // Give the sensor a moment to grab a clean reading after stopping
+                    if (currentT - previousT >= 200) {
+                        if (distance < 50) {
+                            // Object still within 50cm, repeat rotation
+                            previousT = currentT;
+                            moveStep = 4; // Go back to rotate left
+                            currentStatus = "Blocked! Rotating again.";
+                        } 
+                        else if (distance >= 250) {
+                            // Path clear for 250cm, resume forward
+                            moveStep = 0; // Go back to state A
+                            currentStatus = "Clear path found. Resuming.";
+                        }
+                        // Note: If distance is between 50 and 250, we wait here until 
+                        // the rubric condition (clear for 250cm) is met.
+                    }
+                    break;
+            }
             break;
         #pragma endregion
     }
